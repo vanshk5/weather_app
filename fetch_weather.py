@@ -1,27 +1,45 @@
+# fetch_weather.py
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import config
 
 API_KEY = config.API_KEY
-CITY = "Toronto,CA"
+CITY = config.CITY
+
+def get_current_weather():
+    """
+    Fetch current weather for Toronto
+    Returns: temp (°C), humidity (%), precip (mm), condition (str)
+    """
+    url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={CITY}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    data = response.json()
+    temp = data['current']['temp_c']
+    humidity = data['current']['humidity']
+    precip = data['current']['precip_mm']
+    condition = data['current']['condition']['text']
+    return temp, humidity, precip, condition
 
 def get_hourly_history(hours=24):
     """
-    Fetch the last `hours` of hourly weather data from WeatherAPI.
-    Returns a DataFrame with columns: datetime, Temp, Humidity, Precip
+    Fetch last `hours` of hourly historical data for Toronto
+    Returns a DataFrame with datetime, Temp, Humidity, Precip
     """
     df = pd.DataFrame()
     now = datetime.utcnow()
     
-    # Loop over required past dates (WeatherAPI returns data by date)
-    for i in range(hours//24 + 1):
+    # Loop over days (WeatherAPI returns data by date)
+    for i in range(hours // 24 + 1):
         date = (now - timedelta(days=i)).strftime("%Y-%m-%d")
         url = f"http://api.weatherapi.com/v1/history.json?key={API_KEY}&q={CITY}&dt={date}"
         response = requests.get(url)
         if response.status_code != 200:
             continue
         data = response.json()
+        # Iterate over hourly data
         for h in data['forecast']['forecastday'][0]['hour']:
             df = pd.concat([df, pd.DataFrame([{
                 'datetime': pd.to_datetime(h['time']),
