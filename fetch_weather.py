@@ -1,30 +1,35 @@
-# fetch_weather.py
 import requests
+import pandas as pd
+from datetime import datetime, timedelta
+import config
 
-# Your WeatherAPI.com key
-API_KEY = "09d9e6f7a88e420297d11300252808"
+API_KEY = config.API_KEY
 CITY = "Toronto,CA"
 
-def get_current_weather():
-    url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={CITY}"
-    response = requests.get(url)
-
-    if response.status_code != 200:
-        print("Failed to fetch weather data:", response.status_code)
-        return None
-
-    data = response.json()
-    current = data['current']
+def get_hourly_history(hours=24):
+    """
+    Fetch the last `hours` of hourly weather data from WeatherAPI.
+    Returns a DataFrame with columns: datetime, Temp, Humidity, Precip
+    """
+    df = pd.DataFrame()
+    now = datetime.utcnow()
     
-    temp = current['temp_c']
-    humidity = current['humidity']
-    condition = current['condition']['text']  # e.g., Partly cloudy, Rain
-    precip = current['precip_mm']  # Precipitation in mm
-
-    return temp, humidity, precip, condition
-
-if __name__ == "__main__":
-    weather = get_current_weather()
-    if weather:
-        temp, humidity, precip, condition = weather
-        print(f"Temp: {temp}°C, Humidity: {humidity}%, Precip: {precip}mm, Condition: {condition}")
+    # Loop over required past dates (WeatherAPI returns data by date)
+    for i in range(hours//24 + 1):
+        date = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        url = f"http://api.weatherapi.com/v1/history.json?key={API_KEY}&q={CITY}&dt={date}"
+        response = requests.get(url)
+        if response.status_code != 200:
+            continue
+        data = response.json()
+        for h in data['forecast']['forecastday'][0]['hour']:
+            df = pd.concat([df, pd.DataFrame([{
+                'datetime': pd.to_datetime(h['time']),
+                'Temp': h['temp_c'],
+                'Humidity': h['humidity'],
+                'Precip': h['precip_mm']
+            }])], ignore_index=True)
+    
+    # Keep only the last `hours`
+    df = df.sort_values('datetime').tail(hours)
+    return df
