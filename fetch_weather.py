@@ -1,18 +1,17 @@
-# fetch_weather.py
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+import pytz
 import config
 
 API_KEY = config.API_KEY
-CITY = config.CITY
 
-def get_current_weather():
+def get_current_weather(city):
     """
-    Fetch current weather for Toronto
+    Fetch current weather for the specified city.
     Returns: temp (°C), humidity (%), precip (mm), condition (str)
     """
-    url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={CITY}"
+    url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={city}"
     response = requests.get(url)
     if response.status_code != 200:
         return None
@@ -23,31 +22,34 @@ def get_current_weather():
     condition = data['current']['condition']['text']
     return temp, humidity, precip, condition
 
-def get_hourly_history(hours=24):
+
+def get_hourly_history(city, hours=24):
     """
-    Fetch last `hours` of hourly historical data for Toronto
-    Returns a DataFrame with datetime, Temp, Humidity, Precip
+    Fetch last `hours` of hourly historical data for the specified city.
+    Returns a DataFrame with datetime (Toronto local), Temp, Humidity, Precip
     """
     df = pd.DataFrame()
     now = datetime.utcnow()
-    
-    # Loop over days (WeatherAPI returns data by date)
+    tz = pytz.timezone("America/Toronto")  # Toronto timezone
+
     for i in range(hours // 24 + 1):
         date = (now - timedelta(days=i)).strftime("%Y-%m-%d")
-        url = f"http://api.weatherapi.com/v1/history.json?key={API_KEY}&q={CITY}&dt={date}"
+        url = f"http://api.weatherapi.com/v1/history.json?key={API_KEY}&q={city}&dt={date}"
         response = requests.get(url)
         if response.status_code != 200:
             continue
         data = response.json()
-        # Iterate over hourly data
         for h in data['forecast']['forecastday'][0]['hour']:
+            # Convert API time string to datetime
+            dt = pd.to_datetime(h['time'])
+            # Convert UTC to Toronto local time
+            dt = dt.tz_localize('UTC').tz_convert(tz)
             df = pd.concat([df, pd.DataFrame([{
-                'datetime': pd.to_datetime(h['time']),
+                'datetime': dt,
                 'Temp': h['temp_c'],
                 'Humidity': h['humidity'],
                 'Precip': h['precip_mm']
             }])], ignore_index=True)
-    
-    # Keep only the last `hours`
+
     df = df.sort_values('datetime').tail(hours)
     return df
